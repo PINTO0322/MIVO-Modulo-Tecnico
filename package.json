@@ -18,5 +18,8 @@
   "bugs": {
     "url": "https://github.com/PINTO0322/MIVO-Modulo-Tecnico/issues"
   },
-  "homepage": "https://github.com/PINTO0322/MIVO-Modulo-Tecnico#readme"
+  "homepage": "https://github.com/PINTO0322/MIVO-Modulo-Tecnico#readme",
+  "dependencies": {
+    "express": "^5.3.0"
+  }
 }
