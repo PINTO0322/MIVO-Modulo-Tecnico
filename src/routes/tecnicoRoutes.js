@@ -4,7 +4,7 @@ const tecnicoController = require('../controllers/tecnicoController');
 
 const router = Router();
 
-// Consultar los servicios asignados al técnico
 router.get('/servicios', tecnicoController.listarServicios);
+router.get('/servicios/:id', tecnicoController.obtenerServicioPorId);
 
 module.exports = router;
