@@ -4,6 +4,6 @@ const asignacionController = require('../controllers/asignacionController');
 
 const router = Router();
 
-router.get('/:idTecnico', asignacionController.listarAsignaciones);
+router.get('/', asignacionController.listarAsignaciones);
 
 module.exports = router;
