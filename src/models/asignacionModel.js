@@ -8,8 +8,11 @@ const listarAsignacionesPorTecnico = async (idTecnico) => {
             c.id_moto,
             c.id_servicio,
             c.id_tecnico,
-            c.estado_cita
+            c.estado_cita,
+            s.nombre_servicio
         FROM citas AS c
+        INNER JOIN servicio AS s
+            ON c.id_servicio = s.id_servicio
         WHERE c.id_tecnico = ?
         ORDER BY c.id_citas DESC
     `;
