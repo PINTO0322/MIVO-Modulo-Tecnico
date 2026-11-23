@@ -92,9 +92,14 @@ const login = async (req, res) => {
         res.set('Cache-Control', 'no-store');
 
         return res.status(200).json({
-            mensaje: 'Inicio de sesión correcto',
-            token
-        });
+    mensaje: 'Inicio de sesión correcto',
+    token,
+    sesion: {
+        segundos_restantes: config.DURACION_MAXIMA_SEGUNDOS,
+        segundos_inactividad_restantes: config.INACTIVIDAD_SEGUNDOS,
+        aviso_segundos: config.AVISO_SEGUNDOS
+    }
+});
 
     } catch (error) {
         console.error('Error de autenticación:', error.message);
