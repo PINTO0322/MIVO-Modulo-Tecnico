@@ -3,16 +3,18 @@ const { pool } = require('../config/mysqlDb');
 
 const iniciarReparacion = async (idCita, idTecnico) => {
     const [result] = await pool.execute(`
-        UPDATE citas
-        SET estado_reparacion = 'EN_PROCESO',
-            fecha_inicio_reparacion = NOW()
-        WHERE id_citas = ?
-          AND id_tecnico = ?
-          AND id_moto IS NOT NULL
-          AND estado_cita = 'CONFIRMADA'
+        UPDATE citas AS c
+        INNER JOIN moto AS m
+            ON c.id_moto = m.id_moto
+            AND c.id_cliente = m.id_cliente
+        SET c.estado_reparacion = 'EN_PROCESO',
+            c.fecha_inicio_reparacion = NOW()
+        WHERE c.id_citas = ?
+          AND c.id_tecnico = ?
+          AND c.estado_cita = 'CONFIRMADA'
           AND (
-              estado_reparacion IS NULL
-              OR estado_reparacion = 'ASIGNADA'
+              c.estado_reparacion IS NULL
+              OR c.estado_reparacion = 'ASIGNADA'
           )
     `, [idCita, idTecnico]);
 
@@ -22,7 +24,10 @@ const iniciarReparacion = async (idCita, idTecnico) => {
 const iniciarCorreccion = async (idCita, idTecnico) => {
     const [result] = await pool.execute(`
         UPDATE citas AS c
-        SET estado_reparacion = 'EN_CORRECCION'
+        INNER JOIN moto AS m
+            ON c.id_moto = m.id_moto
+            AND c.id_cliente = m.id_cliente
+        SET c.estado_reparacion = 'EN_CORRECCION'
         WHERE c.id_citas = ?
           AND c.id_tecnico = ?
           AND c.estado_reparacion = 'FINALIZADA'
@@ -57,16 +62,24 @@ const finalizarTrabajo = async (
         await conexion.beginTransaction();
 
         const [result] = await conexion.execute(`
-            UPDATE citas
-            SET estado_reparacion = 'FINALIZADA',
-                fecha_fin_reparacion = CASE
+            UPDATE citas AS c
+            INNER JOIN moto AS m
+                ON c.id_moto = m.id_moto
+                AND c.id_cliente = m.id_cliente
+            SET c.estado_reparacion = 'FINALIZADA',
+                c.fecha_fin_reparacion = CASE
                     WHEN ? = 0 THEN NOW()
-                    ELSE fecha_fin_reparacion
+                    ELSE c.fecha_fin_reparacion
                 END
-            WHERE id_citas = ?
-              AND id_tecnico = ?
-              AND estado_reparacion = ?
-        `, [esCorreccion ? 1 : 0, idCita, idTecnico, estadoAnterior]);
+            WHERE c.id_citas = ?
+              AND c.id_tecnico = ?
+              AND c.estado_reparacion = ?
+        `, [
+            esCorreccion ? 1 : 0,
+            idCita,
+            idTecnico,
+            estadoAnterior
+        ]);
 
         if (result.affectedRows === 0) {
             await conexion.rollback();
@@ -96,13 +109,15 @@ const finalizarTrabajo = async (
                 ?,
                 ?
             FROM citas AS c
+            INNER JOIN moto AS m
+                ON c.id_moto = m.id_moto
+                AND c.id_cliente = m.id_cliente
             INNER JOIN servicio AS s
                 ON c.id_servicio = s.id_servicio
             INNER JOIN tecnico AS t
                 ON c.id_tecnico = t.id_tecnico
             WHERE c.id_citas = ?
               AND c.id_tecnico = ?
-              AND c.id_moto IS NOT NULL
               AND (
                   ? = 0 OR EXISTS (
                       SELECT 1
