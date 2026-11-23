@@ -1,0 +1,348 @@
+
+:root {
+    --rojo: #c62828;
+    --oscuro: #191919;
+    --fondo: #f4f5f7;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: var(--fondo);
+    color: #252525;
+}
+
+.encabezado {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 70px;
+    background: var(--oscuro);
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 25px;
+    padding: 0 25px;
+    z-index: 1000;
+}
+
+.encabezado h1 {
+    color: #ef4444;
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: 3px;
+    margin: 0;
+}
+
+.encabezado button {
+    margin-left: auto;
+}
+
+.pantalla-acceso {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 95px 20px 25px;
+}
+
+.tarjeta-acceso {
+    width: 100%;
+    max-width: 430px;
+    padding: 35px;
+}
+
+.marca-acceso {
+    color: var(--rojo);
+    font-size: 42px;
+    font-weight: 800;
+    letter-spacing: 5px;
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.tarjeta-acceso h2 {
+    font-size: 25px;
+    font-weight: 700;
+}
+
+.menu-lateral {
+    position: fixed;
+    top: 70px;
+    bottom: 0;
+    left: 0;
+    width: 240px;
+    background: #222;
+    padding: 25px 15px;
+    overflow-y: auto;
+}
+
+.menu-lateral h6 {
+    color: #aaa;
+    font-size: 12px;
+    margin: 0 12px 20px;
+}
+
+.menu-lateral a {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    margin-bottom: 8px;
+    color: white;
+    text-decoration: none;
+    border-radius: 6px;
+    transition: background 0.2s;
+}
+
+.menu-lateral a:hover,
+.menu-lateral a.activo {
+    background: var(--rojo);
+}
+
+.contenido {
+    margin-left: 240px;
+    margin-top: 70px;
+    padding: 30px;
+    min-width: 0;
+}
+
+.barra-superior {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+}
+
+.contenido h2 {
+    font-size: 27px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.contenido h3 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 20px;
+}
+
+.card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.06);
+}
+
+.indicador {
+    height: 100%;
+    min-height: 165px;
+    padding: 22px;
+    border-left: 5px solid;
+}
+
+.indicador i {
+    font-size: 27px;
+    margin-bottom: 12px;
+}
+
+.indicador h6 {
+    color: #666;
+}
+
+.indicador strong {
+    font-size: 36px;
+}
+
+.pendiente {
+    border-color: #e5a100;
+}
+
+.pendiente i {
+    color: #e5a100;
+}
+
+.proceso {
+    border-color: #1976d2;
+}
+
+.proceso i {
+    color: #1976d2;
+}
+
+.finalizada {
+    border-color: #388e3c;
+}
+
+.finalizada i {
+    color: #388e3c;
+}
+
+.correccion {
+    border-color: #c62828;
+}
+
+.correccion i {
+    color: #c62828;
+}
+
+.btn-danger {
+    background: var(--rojo);
+    border-color: var(--rojo);
+}
+
+.form-control,
+.form-select {
+    padding: 10px 12px;
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--rojo);
+    box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.12);
+}
+
+.table th {
+    background: #f1f2f4;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.table td {
+    vertical-align: middle;
+    font-size: 14px;
+}
+
+.table td,
+.table th {
+    padding: 13px 10px;
+}
+
+.estado {
+    display: inline-block;
+    padding: 6px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.estado-asignada {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.estado-en_proceso {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.estado-finalizada,
+.estado-correccion_finalizada {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.estado-en_correccion {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.estado-neutral {
+    background: #e9ecef;
+    color: #495057;
+}
+
+.sin-registros {
+    padding: 35px 15px;
+    text-align: center;
+    color: #777;
+}
+
+.sin-registros i {
+    display: block;
+    font-size: 35px;
+    margin-bottom: 12px;
+}
+
+dialog {
+    width: calc(100% - 30px);
+    max-width: 520px;
+    padding: 0;
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.25);
+}
+
+dialog::backdrop {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.modal-encabezado {
+    background: var(--oscuro);
+    color: white;
+    padding: 20px;
+}
+
+.modal-encabezado h3 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.modal-contenido {
+    padding: 25px;
+}
+
+.modal-acciones {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 15px 25px;
+    border-top: 1px solid #eee;
+}
+
+#mensaje {
+    color: var(--rojo);
+}
+
+[hidden] {
+    display: none !important;
+}
+
+@media (max-width: 768px) {
+    .encabezado {
+        gap: 12px;
+        padding: 0 15px;
+    }
+
+    .encabezado span {
+        font-size: 12px;
+    }
+
+    .encabezado button {
+        font-size: 12px;
+    }
+
+    .menu-lateral {
+        position: static;
+        width: 100%;
+        margin-top: 70px;
+        padding: 12px;
+    }
+
+    .menu-lateral a {
+        padding: 10px;
+    }
+
+    .contenido {
+        margin: 0;
+        padding: 15px;
+    }
+
+    .indicador {
+        min-height: 135px;
+    }
+
+    .tarjeta-acceso {
+        padding: 25px;
+    }
+}
