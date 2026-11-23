@@ -176,10 +176,23 @@ const revocarSesion = async (idSesion, idUsuario) => {
     return resultado.affectedRows === 1;
 };
 
+const revocarSesionPorHash = async (hashRenovacion) => {
+    const [resultado] = await pool.execute(
+        `UPDATE sesiones_tecnico
+         SET fecha_revocacion = UTC_TIMESTAMP()
+         WHERE hash_renovacion = ?
+           AND fecha_revocacion IS NULL`,
+        [hashRenovacion]
+    );
+
+    return resultado.affectedRows === 1;
+};
+
 module.exports = {
     crearSesion,
     validarSesion,
     renovarSesion,
-    revocarSesion
+    revocarSesion,
+    revocarSesionPorHash
 };
 
