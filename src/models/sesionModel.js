@@ -1,5 +1,5 @@
 
-const pool = require('../config/mysqlDb');
+const { pool } = require('../config/mysqlDb');
 const config = require('../config/sesionConfig');
 
 const crearSesion = async (idSesion, idUsuario, hashRenovacion) => {
