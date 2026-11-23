@@ -112,9 +112,20 @@ const renovar = async (req, res) => {
         });
 
         return res.status(200).json({
-            mensaje: 'Sesión renovada correctamente',
-            token
-        });
+    mensaje: 'Sesión renovada correctamente',
+    token,
+    sesion: {
+        segundos_restantes: Math.max(
+            0,
+            Number(sesion.segundos_restantes)
+        ),
+        segundos_inactividad_restantes: Math.max(
+            0,
+            Number(sesion.segundos_inactividad_restantes)
+        ),
+        aviso_segundos: config.AVISO_SEGUNDOS
+    }
+});
 
     } catch (error) {
         console.error('Error al renovar sesión:', error.message);
