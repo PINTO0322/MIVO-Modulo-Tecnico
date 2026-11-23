@@ -1,10 +1,14 @@
 
 const jwt = require('jsonwebtoken');
+const Sesion = require('../models/sesionModel');
 
-const autenticarJwt = (req, res, next) => {
+const autenticarJwt = async (req, res, next) => {
     const autorizacion = req.headers.authorization;
 
-    if (!autorizacion || !autorizacion.startsWith('Bearer ')) {
+    if (
+        typeof autorizacion !== 'string' ||
+        !autorizacion.startsWith('Bearer ')
+    ) {
         return res.status(401).json({
             error: 'Token de autenticación requerido'
         });
@@ -24,22 +28,48 @@ const autenticarJwt = (req, res, next) => {
         });
     }
 
+    let datos;
+
     try {
-        const datos = jwt.verify(token, process.env.JWT_SECRET, {
+        datos = jwt.verify(token, process.env.JWT_SECRET, {
             algorithms: ['HS256']
         });
+    } catch (error) {
+        return res.status(401).json({
+            error: 'Token inválido o expirado'
+        });
+    }
 
-        const idUsuario = Number(datos.id_usuario);
-        const idRol = Number(datos.id_rol);
+    const idUsuario = Number(datos.id_usuario);
+    const idRol = Number(datos.id_rol);
+    const idSesion = datos.sid;
 
-        if (
-            !Number.isSafeInteger(idUsuario) ||
-            idUsuario <= 0 ||
-            !Number.isSafeInteger(idRol) ||
-            idRol <= 0
-        ) {
+    const uuidValido =
+        typeof idSesion === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+            .test(idSesion);
+
+    if (
+        !Number.isSafeInteger(idUsuario) ||
+        idUsuario <= 0 ||
+        idRol !== 2 ||
+        !uuidValido
+    ) {
+        return res.status(401).json({
+            error: 'Token de autenticación inválido'
+        });
+    }
+
+    try {
+        const sesion = await Sesion.validarSesion(
+            idSesion,
+            idUsuario,
+            true
+        );
+
+        if (!sesion) {
             return res.status(401).json({
-                error: 'Token de autenticación inválido'
+                error: 'Sesión expirada, revocada o inactiva'
             });
         }
 
@@ -48,10 +78,25 @@ const autenticarJwt = (req, res, next) => {
             id_rol: idRol
         };
 
+        req.sesion = {
+            id_sesion: sesion.id_sesion,
+            segundos_restantes: sesion.segundos_restantes,
+            segundos_inactividad_restantes:
+                sesion.segundos_inactividad_restantes
+        };
+
+        res.set('Cache-Control', 'no-store');
+
         return next();
+
     } catch (error) {
-        return res.status(401).json({
-            error: 'Token inválido o expirado'
+        console.error(
+            'Error al validar sesión:',
+            error.message
+        );
+
+        return res.status(500).json({
+            error: 'No se pudo verificar la sesión'
         });
     }
 };
