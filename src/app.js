@@ -1,6 +1,8 @@
 
 const express = require('express');
+const path = require('path');
 
+const authRoutes = require('./routes/authRoutes');
 const tecnicoRoutes = require('./routes/tecnicoRoutes');
 const asignacionRoutes = require('./routes/asignacionRoutes');
 const historialRoutes = require('./routes/historialRoutes');
@@ -13,11 +15,17 @@ const app = express();
 
 app.use(express.json());
 
+app.use('/tecnico', express.static(
+    path.join(__dirname, '../public')
+));
+
 app.get('/', (req, res) => {
     res.json({
         mensaje: 'API del módulo técnico MIVO activa'
     });
 });
+
+app.use('/api/auth', authRoutes);
 
 app.use(
     '/api/tecnico/asignaciones',
@@ -33,10 +41,7 @@ app.use(
     historialRoutes
 );
 
-app.use(
-    '/api/tecnico/reparaciones',
-    reparacionRoutes
-);
+app.use('/api/tecnico/reparaciones', reparacionRoutes);
 
 app.use(
     '/api/tecnico',
