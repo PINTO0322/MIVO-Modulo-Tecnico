@@ -93,6 +93,9 @@ const finalizarTrabajo = async (
                 id_servicio,
                 id_tecnico,
                 servicio,
+                cliente,
+                precio,
+                placa_moto,
                 tecnico_responsable,
                 fecha,
                 estado,
@@ -104,6 +107,9 @@ const finalizarTrabajo = async (
                 c.id_servicio,
                 c.id_tecnico,
                 s.nombre_servicio,
+                cl.nombre_completo,
+                s.precio_servicio,
+                m.placa,
                 t.nombre_completo,
                 CURDATE(),
                 ?,
@@ -112,6 +118,8 @@ const finalizarTrabajo = async (
             INNER JOIN moto AS m
                 ON c.id_moto = m.id_moto
                 AND c.id_cliente = m.id_cliente
+            INNER JOIN cliente AS cl
+                ON c.id_cliente = cl.id_cliente
             INNER JOIN servicio AS s
                 ON c.id_servicio = s.id_servicio
             INNER JOIN tecnico AS t
