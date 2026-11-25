@@ -1,7 +1,4 @@
-
-USE mivo_db;
-
-CREATE TABLE sesiones_tecnico (
+CREATE TABLE IF NOT EXISTS sesiones_tecnico (
     id_sesion CHAR(36) PRIMARY KEY,
     id_usuario INT NOT NULL,
     hash_renovacion CHAR(64) NOT NULL UNIQUE,
