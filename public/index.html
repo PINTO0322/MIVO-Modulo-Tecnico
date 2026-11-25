@@ -1,20 +1,67 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MIVO | Módulo Técnico</title>
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
 
+    <style>
+        .menu-lateral a:focus-visible {
+            background: var(--rojo);
+        }
+
+        .barra-superior {
+            gap: 12px;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        .table-responsive:focus-visible {
+            outline: 2px solid var(--rojo);
+            outline-offset: 2px;
+        }
+
+        #listaHistorial table {
+            min-width: 840px;
+        }
+
+        #listaHistorial td:last-child {
+            min-width: 180px;
+            overflow-wrap: anywhere;
+        }
+
+        @media (max-width: 768px) {
+            .menu-lateral {
+                width: auto;
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 6px;
+            }
+
+            .menu-lateral a {
+                min-height: 44px;
+                margin: 0;
+                padding: 6px 4px;
+                justify-content: center;
+                gap: 5px;
+                font-size: 0.8rem;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
     <header class="encabezado">
         <h1>MIVO</h1>
         <span>Módulo Técnico</span>
-        <button id="salir" class="btn btn-outline-light" hidden>
+        <button id="salir" type="button" class="btn btn-outline-light" hidden>
             <i class="bi bi-box-arrow-right"></i>
             Cerrar sesión
         </button>
@@ -23,26 +70,19 @@
     <section id="acceso" class="pantalla-acceso">
         <div class="card tarjeta-acceso">
             <div class="marca-acceso">MIVO</div>
-
             <h2>Acceso del técnico</h2>
             <p class="text-secondary">Gestión de reparaciones y servicios.</p>
 
             <form id="login">
                 <div class="mb-3">
-                    <label for="usuario" class="form-label">
-                        ID de usuario
-                    </label>
-                    <input type="number" id="usuario"
-                        class="form-control" min="1" step="1"
-                        autocomplete="username" required>
+                    <label for="usuario" class="form-label">ID de usuario</label>
+                    <input type="number" id="usuario" class="form-control"
+                        min="1" step="1" autocomplete="username" required>
                 </div>
 
                 <div class="mb-4">
-                    <label for="password" class="form-label">
-                        Contraseña
-                    </label>
-                    <input type="password" id="password"
-                        class="form-control"
+                    <label for="password" class="form-label">Contraseña</label>
+                    <input type="password" id="password" class="form-control"
                         autocomplete="current-password" required>
                 </div>
 
@@ -55,9 +95,7 @@
         </div>
     </section>
 
-    <aside id="menu" class="menu-lateral" hidden>
-        <h6>MENÚ PRINCIPAL</h6>
-
+    <nav id="menu" class="menu-lateral" aria-label="Menú del técnico" hidden>
         <a href="#dashboard" class="activo">
             <i class="bi bi-speedometer2"></i> Dashboard
         </a>
@@ -77,15 +115,21 @@
         <a href="#historial">
             <i class="bi bi-clock-history"></i> Historial
         </a>
-    </aside>
+
+        <a href="#perfil">
+            <i class="bi bi-person-circle"></i> Mi perfil
+        </a>
+    </nav>
 
     <main id="panelTecnico" class="contenido" hidden>
-
         <div class="barra-superior">
-            <span class="text-secondary">Panel de trabajo</span>
-
+            <span id="estadoCarga" class="text-secondary" role="status"></span>
+            <button id="actualizarPanel" type="button" class="btn btn-outline-secondary btn-sm">
+                Actualizar datos
+            </button>
         </div>
 
+        <div id="avisoSesion" class="alert alert-warning" role="status" hidden></div>
         <div id="notificacion" class="alert" role="status" hidden></div>
 
         <section id="dashboard" class="vista">
@@ -93,7 +137,6 @@
             <p id="bienvenida" class="text-secondary"></p>
 
             <div class="row g-3 mb-4">
-
                 <div class="col-sm-6 col-xl-3">
                     <div class="card indicador pendiente">
                         <i class="bi bi-card-checklist"></i>
@@ -125,7 +168,6 @@
                         <strong id="en_correccion">—</strong>
                     </div>
                 </div>
-
             </div>
 
             <div class="card p-4">
@@ -136,13 +178,10 @@
 
         <section id="asignaciones" class="vista" hidden>
             <h2>Motocicletas asignadas</h2>
-            <p class="text-secondary">
-                Consulta y organiza tus trabajos asignados.
-            </p>
+            <p class="text-secondary">Consulta y organiza tus trabajos asignados.</p>
 
             <div class="card p-4">
                 <div class="row g-3 mb-4">
-
                     <div class="col-md-8">
                         <input id="buscarMoto" class="form-control"
                             aria-label="Buscar motocicleta"
@@ -150,8 +189,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <select id="filtroEstado" class="form-select"
-                            aria-label="Filtrar estado">
+                        <select id="filtroEstado" class="form-select" aria-label="Filtrar estado">
                             <option value="">Todos los estados</option>
                             <option value="ASIGNADA">Asignadas</option>
                             <option value="EN_PROCESO">En proceso</option>
@@ -159,7 +197,6 @@
                             <option value="EN_CORRECCION">En corrección</option>
                         </select>
                     </div>
-
                 </div>
 
                 <div id="listaAsignaciones"></div>
@@ -168,14 +205,11 @@
 
         <section id="servicios" class="vista" hidden>
             <h2>Catálogo de servicios</h2>
-            <p class="text-secondary">
-                Consulta los servicios disponibles en el taller.
-            </p>
+            <p class="text-secondary">Consulta los servicios disponibles en el taller.</p>
 
             <div class="card p-4">
                 <input id="buscarServicio" class="form-control mb-4"
-                    aria-label="Buscar servicio"
-                    placeholder="Buscar servicio o tipo">
+                    aria-label="Buscar servicio" placeholder="Buscar servicio o tipo">
 
                 <div id="listaServicios"></div>
             </div>
@@ -183,14 +217,11 @@
 
         <section id="reparaciones" class="vista" hidden>
             <h2>Gestión de reparaciones</h2>
-            <p class="text-secondary">
-                Inicia, finaliza y corrige tus reparaciones.
-            </p>
+            <p class="text-secondary">Inicia, finaliza y corrige tus reparaciones.</p>
 
             <div class="card p-4">
                 <input id="buscarReparacion" class="form-control mb-4"
-                    aria-label="Buscar reparación"
-                    placeholder="Buscar placa o servicio">
+                    aria-label="Buscar reparación" placeholder="Buscar placa o servicio">
 
                 <div id="listaReparaciones"></div>
             </div>
@@ -198,19 +229,34 @@
 
         <section id="historial" class="vista" hidden>
             <h2>Historial de reparaciones</h2>
-            <p class="text-secondary">
-                Consulta los trabajos y correcciones que has realizado.
-            </p>
+            <p class="text-secondary">Consulta los trabajos y correcciones que has realizado.</p>
 
             <div class="card p-4">
                 <input id="buscarHistorial" class="form-control mb-4"
                     aria-label="Buscar historial"
-                    placeholder="Buscar servicio, estado o repuestos">
+                    placeholder="Buscar placa, cliente, servicio o repuestos">
 
                 <div id="listaHistorial"></div>
             </div>
         </section>
 
+        <section id="perfil" class="vista" hidden>
+            <h2>Mi perfil</h2>
+
+            <dl class="card p-4 mb-0">
+                <dt>Nombre</dt>
+                <dd id="perfilNombre">—</dd>
+
+                <dt>ID de usuario</dt>
+                <dd id="perfilUsuario">—</dd>
+
+                <dt>Especialidad</dt>
+                <dd id="perfilEspecialidad">—</dd>
+
+                <dt>Teléfono</dt>
+                <dd id="perfilTelefono" class="mb-0">—</dd>
+            </dl>
+        </section>
     </main>
 
     <dialog id="modalTrabajo" aria-labelledby="tituloModal">
@@ -223,33 +269,25 @@
                 <p id="detalleTrabajo"></p>
 
                 <div id="campoRepuestos" hidden>
-                    <label for="repuestos" class="form-label">
-                        Repuestos utilizados
-                    </label>
-                    <textarea id="repuestos" class="form-control"
-                        rows="4" maxlength="10000"></textarea>
+                    <label for="repuestos" class="form-label">Repuestos utilizados</label>
+                    <textarea id="repuestos" class="form-control" rows="4" maxlength="10000"></textarea>
                 </div>
 
-                <p id="errorTrabajo" class="text-danger mt-3"
-                    role="status"></p>
+                <p id="errorTrabajo" class="text-danger mt-3" role="alert" hidden></p>
             </div>
 
             <div class="modal-acciones">
-                <button id="cancelar" type="button"
-                    class="btn btn-secondary">
+                <button id="cancelar" type="button" class="btn btn-secondary">
                     Cancelar
                 </button>
 
-                <button id="confirmarTrabajo" type="submit"
-                    class="btn btn-danger">
+                <button id="confirmarTrabajo" type="submit" class="btn btn-danger">
                     Confirmar
                 </button>
             </div>
         </form>
     </dialog>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/main.js"></script>
-
 </body>
 </html>
