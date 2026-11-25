@@ -1,6 +1,3 @@
-
-USE mivo_db;
-
 CREATE OR REPLACE SQL SECURITY DEFINER VIEW vista_acceso_tecnico AS
 SELECT
     u.id_usuario,
