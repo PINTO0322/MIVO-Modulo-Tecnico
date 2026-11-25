@@ -1,4 +1,3 @@
-
 const { pool } = require('../config/mysqlDb');
 
 const listarHistorialPorTecnico = async (idTecnico) => {
@@ -7,10 +6,11 @@ const listarHistorialPorTecnico = async (idTecnico) => {
             h.*
         FROM historial_de_servicios AS h
         WHERE h.id_tecnico = ?
-        ORDER BY h.id_citas DESC
+        ORDER BY h.fecha DESC, h.id_historialservicios DESC
     `;
 
     const [rows] = await pool.execute(query, [idTecnico]);
+
     return rows;
 };
 
