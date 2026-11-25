@@ -1,9 +1,8 @@
-
 let token = null;
 let versionSesion = 0;
-let trabajos = [];
-let servicios = [];
-let historial = [];
+let trabajos = null;
+let servicios = null;
+let historial = null;
 let operacion = null;
 let cargando = false;
 let enviando = false;
@@ -17,7 +16,6 @@ let vencimientoJWT = 0;
 let limiteInactividad = 0;
 let limiteSesion = 0;
 let ultimoIntentoRenovacion = 0;
-let avisoSesionVisible = false;
 
 const INACTIVIDAD_MS = 15 * 60 * 1000;
 const SESION_MAXIMA_MS = 2 * 60 * 60 * 1000;
@@ -25,6 +23,7 @@ const JWT_MS = 15 * 60 * 1000;
 const AVISO_MS = 2 * 60 * 1000;
 const RENOVACION_ANTICIPADA_MS = 60 * 1000;
 const INTERVALO_ACTIVIDAD_MS = 30 * 1000;
+const ESPERA_API_MS = 15000;
 
 const elemento = id => document.getElementById(id);
 
@@ -33,7 +32,8 @@ const vistas = [
     'asignaciones',
     'servicios',
     'reparaciones',
-    'historial'
+    'historial',
+    'perfil'
 ];
 
 const indicadores = [
@@ -54,11 +54,8 @@ const estados = {
 const actualizarTiempos = datos => {
     const ahora = Date.now();
     const sesion = datos.sesion || {};
-
     const restantes = Number(sesion.segundos_restantes);
-    const inactividad = Number(
-        sesion.segundos_inactividad_restantes
-    );
+    const inactividad = Number(sesion.segundos_inactividad_restantes);
 
     if (Number.isFinite(restantes) && restantes > 0) {
         limiteSesion = ahora + restantes * 1000;
@@ -77,30 +74,58 @@ const actualizarTiempos = datos => {
 
 const notificar = (mensaje, tipo = 'success') => {
     const aviso = elemento('notificacion');
-
     aviso.className = `alert alert-${tipo}`;
     aviso.textContent = mensaje;
     aviso.hidden = !mensaje;
 };
 
+const mostrarAvisoSesion = mensaje => {
+    const aviso = elemento('avisoSesion');
+    aviso.hidden = !mensaje;
+
+    if (aviso.textContent !== mensaje) {
+        aviso.textContent = mensaje;
+    }
+};
+
+const obtenerIdUsuario = () => {
+    const contenido = token?.split('.')[1];
+    if (!contenido) return '—';
+
+    try {
+        const datos = JSON.parse(atob(contenido.replace(/-/g, '+').replace(/_/g, '/')));
+        return datos.id_usuario ?? '—';
+    } catch {
+        return '—';
+    }
+};
+
+const renderizarPerfil = (perfil = {}) => {
+    elemento('perfilNombre').textContent = perfil.nombre_completo || '—';
+    elemento('perfilUsuario').textContent = perfil.id_usuario ?? obtenerIdUsuario();
+    elemento('perfilEspecialidad').textContent = perfil.especialidad || '—';
+    elemento('perfilTelefono').textContent = perfil.telefono || '—';
+};
+
 const cerrarSesionLocal = (mensaje = '') => {
+    const panelVisible = !elemento('panelTecnico').hidden;
     versionSesion++;
 
     token = null;
-    trabajos = [];
-    servicios = [];
-    historial = [];
+    trabajos = null;
+    servicios = null;
+    historial = null;
     operacion = null;
     cargando = false;
     enviando = false;
     actividadPendiente = false;
-    avisoSesionVisible = false;
 
     ultimaInteraccion = 0;
     ultimoContactoAPI = 0;
     vencimientoJWT = 0;
     limiteInactividad = 0;
     limiteSesion = 0;
+    ultimoIntentoRenovacion = 0;
 
     elemento('acceso').hidden = false;
     elemento('menu').hidden = true;
@@ -110,6 +135,9 @@ const cerrarSesionLocal = (mensaje = '') => {
     elemento('login').reset();
     elemento('mensaje').textContent = mensaje;
     elemento('bienvenida').textContent = '';
+    elemento('actualizarPanel').disabled = false;
+    elemento('estadoCarga').textContent = '';
+    renderizarPerfil();
 
     elemento('confirmarTrabajo').disabled = false;
     elemento('cancelar').disabled = false;
@@ -142,77 +170,56 @@ const cerrarSesionLocal = (mensaje = '') => {
     });
 
     notificar('');
+    mostrarAvisoSesion('');
 
-    window.history.replaceState(
-        null,
-        '',
-        window.location.pathname + window.location.search
-    );
+    if (panelVisible) elemento('usuario').focus();
 };
 
 const terminarSesion = mensaje => {
-    if (!token) return;
+    if (token) cerrarSesionLocal(mensaje);
+};
 
-    const renovacion = renovacionPendiente;
+const solicitarCambioSesion = (ruta, opciones = {}) => {
+    const enviar = () => fetch(ruta, {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        signal: AbortSignal.timeout(ESPERA_API_MS),
+        ...opciones
+    });
 
-    cerrarSesionLocal(mensaje);
-
-    Promise.resolve(renovacion)
-        .catch(() => {})
-        .finally(() => {
-            fetch('/api/auth/logout', {
-                method: 'POST',
-                credentials: 'same-origin',
-                cache: 'no-store'
-            }).catch(() => {});
-        });
+    return navigator.locks
+        ? navigator.locks.request('mivo-sesion-tecnica', enviar)
+        : enviar();
 };
 
 const renovarToken = async () => {
-    if (!token) {
-        throw new Error('Inicia sesión nuevamente');
-    }
-
-    if (renovacionPendiente) {
-        return renovacionPendiente;
-    }
+    if (!token) throw new Error('Inicia sesión nuevamente');
+    if (renovacionPendiente) return renovacionPendiente;
 
     const version = versionSesion;
-
     const tarea = (async () => {
-        const respuesta = await fetch('/api/auth/renovar', {
-            method: 'POST',
-            credentials: 'same-origin',
-            cache: 'no-store'
+        const respuesta = await solicitarCambioSesion('/api/auth/renovar', {
+            headers: { Authorization: `Bearer ${token}` }
         });
 
-        const datos = await respuesta.json()
-            .catch(() => ({}));
+        const datos = await respuesta.json().catch(() => ({}));
 
         if (version !== versionSesion) {
             throw new Error('La sesión ha cambiado');
         }
 
-        if (
-            respuesta.status === 401 ||
-            respuesta.status === 403
-        ) {
-            terminarSesion(
-                'Tu sesión ha expirado. Inicia sesión nuevamente.'
-            );
-
+        if (respuesta.status === 401 || respuesta.status === 403) {
+            terminarSesion('Tu sesión ha expirado. Inicia sesión nuevamente.');
             throw new Error('Sesión expirada');
         }
 
         if (!respuesta.ok || !datos.token) {
-            throw new Error(
-                datos.error || 'No se pudo renovar la sesión'
-            );
+            throw new Error(datos.error || 'No se pudo renovar la sesión');
         }
 
         token = datos.token;
         actualizarTiempos(datos);
-
         return token;
     })();
 
@@ -221,9 +228,7 @@ const renovarToken = async () => {
     try {
         return await tarea;
     } finally {
-        if (renovacionPendiente === tarea) {
-            renovacionPendiente = null;
-        }
+        if (renovacionPendiente === tarea) renovacionPendiente = null;
     }
 };
 
@@ -231,39 +236,41 @@ const consultarAPI = async (ruta, metodo = 'GET', datos) => {
     const version = versionSesion;
     const protegida = ruta.startsWith('/api/tecnico/');
 
-    if (
-        protegida &&
-        token &&
-        Date.now() >= vencimientoJWT - RENOVACION_ANTICIPADA_MS
-    ) {
+    if (protegida && token && Date.now() >= vencimientoJWT - RENOVACION_ANTICIPADA_MS) {
         await renovarToken();
     }
 
     const realizarSolicitud = async () => {
         const headers = {};
+        const tokenEnviado = token;
 
         if (datos !== undefined) {
             headers['Content-Type'] = 'application/json';
         }
 
-        if (protegida && token) {
-            headers.Authorization = `Bearer ${token}`;
+        if (protegida && tokenEnviado) {
+            headers.Authorization = `Bearer ${tokenEnviado}`;
         }
 
-        const respuesta = await fetch(ruta, {
+        const opciones = {
             method: metodo,
             headers,
             credentials: 'same-origin',
             cache: 'no-store',
-            body: datos === undefined
-                ? undefined
-                : JSON.stringify(datos)
-        });
+            body: datos === undefined ? undefined : JSON.stringify(datos)
+        };
+
+        const respuesta = ruta === '/api/auth/login'
+            ? await solicitarCambioSesion(ruta, opciones)
+            : await fetch(ruta, {
+                ...opciones,
+                signal: AbortSignal.timeout(ESPERA_API_MS)
+            });
 
         return {
             respuesta,
-            resultado: await respuesta.json()
-                .catch(() => ({}))
+            tokenEnviado,
+            resultado: await respuesta.json().catch(() => ({}))
         };
     };
 
@@ -273,12 +280,13 @@ const consultarAPI = async (ruta, metodo = 'GET', datos) => {
         throw new Error('La sesión ha cambiado');
     }
 
-    if (
-        protegida &&
-        solicitud.respuesta.status === 401 &&
-        token
-    ) {
-        await renovarToken();
+    if (protegida && solicitud.respuesta.status === 401 && token) {
+        if (token === solicitud.tokenEnviado) await renovarToken();
+
+        if (version !== versionSesion) {
+            throw new Error('La sesión ha cambiado');
+        }
+
         solicitud = await realizarSolicitud();
     }
 
@@ -287,21 +295,26 @@ const consultarAPI = async (ruta, metodo = 'GET', datos) => {
     }
 
     if (!solicitud.respuesta.ok) {
-        if (protegida && solicitud.respuesta.status === 401) {
+        const estado = solicitud.respuesta.status;
+
+        if (protegida && [401, 403].includes(estado)) {
             terminarSesion(
-                'Tu sesión ha expirado. Inicia sesión nuevamente.'
+                estado === 403
+                    ? 'Tu acceso técnico ya no está autorizado.'
+                    : 'Tu sesión ha expirado. Inicia sesión nuevamente.'
             );
         }
 
-        throw new Error(
-            solicitud.resultado.error ||
-            'No se pudo completar la solicitud'
+        const error = new Error(
+            solicitud.resultado.error || 'No se pudo completar la solicitud'
         );
+        error.status = estado;
+        throw error;
     }
 
     if (protegida && token) {
         ultimoContactoAPI = Date.now();
-        limiteInactividad = Date.now() + INACTIVIDAD_MS;
+        limiteInactividad = ultimoContactoAPI + INACTIVIDAD_MS;
     }
 
     return solicitud.resultado;
@@ -311,34 +324,23 @@ const comprobarVigencia = () => {
     if (!token || cerrando) return;
 
     const ahora = Date.now();
-
     const vencimiento = Math.min(
         limiteSesion,
         limiteInactividad,
         ultimaInteraccion + INACTIVIDAD_MS
     );
-
     const restante = vencimiento - ahora;
 
     if (restante <= 0) {
-        terminarSesion(
-            'Tu sesión terminó por inactividad o por alcanzar el límite de 2 horas.'
-        );
+        terminarSesion('Tu sesión terminó por inactividad o por alcanzar el límite de 2 horas.');
         return;
     }
 
     if (restante <= AVISO_MS) {
         const minutos = Math.ceil(restante / 60000);
-
-        notificar(
-            `Atención: tu sesión puede terminar en ${minutos} minuto(s).`,
-            'warning'
-        );
-
-        avisoSesionVisible = true;
-    } else if (avisoSesionVisible) {
-        notificar('');
-        avisoSesionVisible = false;
+        mostrarAvisoSesion(`Tu sesión puede terminar en ${minutos} minuto(s).`);
+    } else {
+        mostrarAvisoSesion('');
     }
 
     if (
@@ -350,9 +352,7 @@ const comprobarVigencia = () => {
         ultimoIntentoRenovacion = ahora;
 
         renovarToken().catch(error => {
-            if (token) {
-                notificar(error.message, 'danger');
-            }
+            if (token) notificar(error.message, 'danger');
         });
     }
 };
@@ -373,25 +373,19 @@ const registrarInteraccion = () => {
 
     ultimaInteraccion = ahora;
 
-    if (
-        !actividadPendiente &&
-        ahora - ultimoContactoAPI >= INTERVALO_ACTIVIDAD_MS
-    ) {
+    if (!actividadPendiente && ahora - ultimoContactoAPI >= INTERVALO_ACTIVIDAD_MS) {
+        const version = versionSesion;
         actividadPendiente = true;
 
         consultarAPI('/api/tecnico/dashboard')
-            .then(() => {
-                if (avisoSesionVisible) {
-                    comprobarVigencia();
-                }
-            })
+            .then(comprobarVigencia)
             .catch(error => {
-                if (token) {
+                if (version === versionSesion && token) {
                     notificar(error.message, 'danger');
                 }
             })
             .finally(() => {
-                actividadPendiente = false;
+                if (version === versionSesion) actividadPendiente = false;
             });
     }
 };
@@ -436,45 +430,41 @@ const crearEstado = estado => {
         ? `estado estado-${estado.toLowerCase()}`
         : 'estado estado-neutral';
 
-    etiqueta.textContent =
-        estados[estado] || estado || 'Sin iniciar';
-
+    etiqueta.textContent = estados[estado] || estado || 'Sin iniciar';
     return etiqueta;
 };
 
 const mostrarVista = nombre => {
     if (!token) return;
 
-    const seleccionada = vistas.includes(nombre)
-        ? nombre
-        : 'dashboard';
+    const seleccionada = vistas.includes(nombre) ? nombre : 'dashboard';
 
     vistas.forEach(vista => {
         elemento(vista).hidden = vista !== seleccionada;
     });
 
-    document.querySelectorAll('.menu-lateral a')
-        .forEach(enlace => {
-            const activo =
-                enlace.hash === `#${seleccionada}`;
+    document.querySelectorAll('.menu-lateral a').forEach(enlace => {
+        const activo = enlace.hash === `#${seleccionada}`;
+        enlace.classList.toggle('activo', activo);
 
-            enlace.classList.toggle('activo', activo);
+        if (activo) {
+            enlace.setAttribute('aria-current', 'page');
+        } else {
+            enlace.removeAttribute('aria-current');
+        }
+    });
 
-            if (activo) {
-                enlace.setAttribute('aria-current', 'page');
-            } else {
-                enlace.removeAttribute('aria-current');
-            }
-        });
-
+    const titulo = elemento(seleccionada).querySelector('h2');
+    titulo.tabIndex = -1;
+    titulo.focus({ preventScroll: true });
     window.scrollTo(0, 0);
 };
 
-const crearTabla = (contenedor, titulos, registros) => {
+const crearTabla = (contenedor, titulos, registros, hayFiltro = false) => {
     const destino = elemento(contenedor);
     destino.replaceChildren();
 
-    if (!registros.length) {
+    if (!registros?.length) {
         const vacio = document.createElement('div');
         vacio.className = 'sin-registros';
 
@@ -482,7 +472,14 @@ const crearTabla = (contenedor, titulos, registros) => {
         icono.className = 'bi bi-inbox';
 
         const mensaje = document.createElement('span');
-        mensaje.textContent = 'No hay registros disponibles.';
+
+        if (registros === null) {
+            mensaje.textContent = 'Datos no disponibles. Usa Actualizar datos para reintentar.';
+        } else if (hayFiltro) {
+            mensaje.textContent = 'Ningún registro coincide con los filtros.';
+        } else {
+            mensaje.textContent = 'No hay registros disponibles.';
+        }
 
         vacio.append(icono, mensaje);
         destino.appendChild(vacio);
@@ -491,10 +488,12 @@ const crearTabla = (contenedor, titulos, registros) => {
 
     const envoltura = document.createElement('div');
     envoltura.className = 'table-responsive';
+    envoltura.tabIndex = 0;
+    envoltura.setAttribute('role', 'region');
+    envoltura.setAttribute('aria-label', destino.closest('.vista').querySelector('h2').textContent);
 
     const tabla = document.createElement('table');
     tabla.className = 'table table-hover align-middle';
-
     const encabezado = tabla.createTHead().insertRow();
 
     titulos.forEach(titulo => {
@@ -527,22 +526,13 @@ const crearTabla = (contenedor, titulos, registros) => {
 const abrirOperacion = (trabajo, accion, titulo) => {
     if (!token || cargando || enviando) return;
 
-    operacion = {
-        id: trabajo.id_citas,
-        accion
-    };
-
+    operacion = { id: trabajo.id_citas, accion };
     elemento('tituloModal').textContent = titulo;
-
-    elemento('detalleTrabajo').textContent =
-        `${trabajo.placa} — ${trabajo.nombre_servicio}`;
-
-    elemento('campoRepuestos').hidden =
-        !accion.endsWith('finalizar');
-
+    elemento('detalleTrabajo').textContent = `${trabajo.placa} — ${trabajo.nombre_servicio}`;
+    elemento('campoRepuestos').hidden = !accion.endsWith('finalizar');
     elemento('repuestos').value = '';
     elemento('errorTrabajo').textContent = '';
-
+    elemento('errorTrabajo').hidden = true;
     elemento('modalTrabajo').showModal();
 };
 
@@ -550,29 +540,19 @@ const crearAccion = trabajo => {
     const opciones = {
         ASIGNADA: ['Iniciar', 'iniciar'],
         EN_PROCESO: ['Finalizar', 'finalizar'],
-        FINALIZADA: [
-            'Iniciar corrección',
-            'correccion/iniciar'
-        ],
-        EN_CORRECCION: [
-            'Finalizar corrección',
-            'correccion/finalizar'
-        ]
+        FINALIZADA: ['Iniciar corrección', 'correccion/iniciar'],
+        EN_CORRECCION: ['Finalizar corrección', 'correccion/finalizar']
     };
 
     const opcion = opciones[trabajo.estado_reparacion];
 
     if (!opcion) return '—';
 
-    if (
-        trabajo.estado_reparacion === 'ASIGNADA' &&
-        trabajo.estado_cita !== 'CONFIRMADA'
-    ) {
+    if (trabajo.estado_reparacion === 'ASIGNADA' && trabajo.estado_cita !== 'CONFIRMADA') {
         return '—';
     }
 
     const boton = document.createElement('button');
-
     boton.type = 'button';
     boton.className = 'btn btn-danger btn-sm';
     boton.textContent = opcion[0];
@@ -585,28 +565,28 @@ const crearAccion = trabajo => {
 };
 
 const renderizarDashboard = datos => {
-    elemento('bienvenida').textContent =
-        `Bienvenido, ${datos.tecnico}`;
+    if (datos) {
+        elemento('bienvenida').textContent = datos.tecnico ? `Bienvenido, ${datos.tecnico}` : '';
 
-    indicadores.forEach(id => {
-        elemento(id).textContent = datos.resumen[id] ?? 0;
-    });
+        indicadores.forEach(id => {
+            elemento(id).textContent = datos.resumen?.[id] ?? '—';
+        });
+    }
 
-    const proximos = trabajos.filter(trabajo =>
-        ['ASIGNADA', 'EN_PROCESO', 'EN_CORRECCION']
-            .includes(trabajo.estado_reparacion)
+    const proximos = trabajos?.filter(trabajo =>
+        ['ASIGNADA', 'EN_PROCESO', 'EN_CORRECCION'].includes(trabajo.estado_reparacion)
     ).slice(0, 5);
 
     crearTabla(
         'proximosTrabajos',
         ['Placa', 'Motocicleta', 'Servicio', 'Fecha', 'Estado'],
-        proximos.map(t => [
+        proximos?.map(t => [
             t.placa,
             nombreMoto(t),
             t.nombre_servicio,
             formatearFecha(t.fecha_cita),
             crearEstado(t.estado_reparacion)
-        ])
+        ]) ?? null
     );
 };
 
@@ -614,59 +594,37 @@ const renderizarAsignaciones = () => {
     const busqueda = elemento('buscarMoto').value;
     const estado = elemento('filtroEstado').value;
 
-    const filtrados = trabajos.filter(t =>
-        coincide(busqueda, [
-            t.placa,
-            t.linea,
-            t.modelo,
-            t.nombre_servicio
-        ]) && (!estado || t.estado_reparacion === estado)
+    const filtrados = trabajos?.filter(t =>
+        coincide(busqueda, [t.placa, t.linea, t.modelo, t.nombre_servicio]) &&
+        (!estado || t.estado_reparacion === estado)
     );
 
     crearTabla(
         'listaAsignaciones',
-        [
-            'Placa',
-            'Motocicleta',
-            'Servicio',
-            'Fecha',
-            'Estado',
-            'Acciones'
-        ],
-        filtrados.map(t => [
+        ['Placa', 'Motocicleta', 'Servicio', 'Fecha', 'Estado', 'Acciones'],
+        filtrados?.map(t => [
             t.placa,
             nombreMoto(t),
             t.nombre_servicio,
             formatearFecha(t.fecha_cita),
             crearEstado(t.estado_reparacion),
             crearAccion(t)
-        ])
+        ]) ?? null,
+        Boolean(busqueda.trim() || estado)
     );
 };
 
 const renderizarServicios = () => {
     const busqueda = elemento('buscarServicio').value;
 
-    const filtrados = servicios.filter(s =>
-        coincide(busqueda, [
-            s.nombre_servicio,
-            s.tipo_servicio,
-            s.descripcion_servicio
-        ])
+    const filtrados = servicios?.filter(s =>
+        coincide(busqueda, [s.nombre_servicio, s.tipo_servicio, s.descripcion_servicio])
     );
 
     crearTabla(
         'listaServicios',
-        [
-            'Servicio',
-            'Descripción',
-            'Tipo',
-            'Precio',
-            'Duración',
-            'Garantía',
-            'Complejidad'
-        ],
-        filtrados.map(s => [
+        ['Servicio', 'Descripción', 'Tipo', 'Precio', 'Duración', 'Garantía', 'Complejidad'],
+        filtrados?.map(s => [
             s.nombre_servicio,
             s.descripcion_servicio,
             s.tipo_servicio,
@@ -674,72 +632,62 @@ const renderizarServicios = () => {
             s.duracion_estimada,
             s.garantia_servicio,
             s.nivel_complejidad
-        ])
+        ]) ?? null,
+        Boolean(busqueda.trim())
     );
 };
 
 const renderizarReparaciones = () => {
     const busqueda = elemento('buscarReparacion').value;
 
-    const filtrados = trabajos.filter(t =>
-        [
-            'ASIGNADA',
-            'EN_PROCESO',
-            'FINALIZADA',
-            'EN_CORRECCION'
-        ].includes(t.estado_reparacion) &&
-        coincide(busqueda, [
-            t.placa,
-            t.nombre_servicio,
-            t.linea,
-            t.modelo
-        ])
+    const filtrados = trabajos?.filter(t =>
+        ['ASIGNADA', 'EN_PROCESO', 'FINALIZADA', 'EN_CORRECCION'].includes(t.estado_reparacion) &&
+        coincide(busqueda, [t.placa, t.nombre_servicio, t.linea, t.modelo])
     );
 
     crearTabla(
         'listaReparaciones',
-        [
-            'Placa',
-            'Servicio',
-            'Inicio',
-            'Finalización',
-            'Estado',
-            'Acciones'
-        ],
-        filtrados.map(t => [
+        ['Placa', 'Servicio', 'Inicio', 'Finalización', 'Estado', 'Acciones'],
+        filtrados?.map(t => [
             t.placa,
             t.nombre_servicio,
             formatearFecha(t.fecha_inicio_reparacion),
             formatearFecha(t.fecha_fin_reparacion),
             crearEstado(t.estado_reparacion),
             crearAccion(t)
-        ])
+        ]) ?? null,
+        Boolean(busqueda.trim())
     );
 };
 
 const renderizarHistorial = () => {
     const busqueda = elemento('buscarHistorial').value;
 
-    const filtrados = historial.filter(h =>
+    const filtrados = historial?.filter(h =>
         coincide(busqueda, [
             h.servicio,
             h.estado,
             estados[h.estado],
             h.repuestos_utilizados,
-            h.placa_moto
+            h.placa_moto,
+            h.cliente
         ])
     );
 
     crearTabla(
         'listaHistorial',
-        ['Cita', 'Fecha', 'Servicio', 'Estado', 'Repuestos'],
-        filtrados.map(h => [
+        ['Cita', 'Fecha', 'Placa', 'Cliente', 'Servicio', 'Precio', 'Estado', 'Repuestos'],
+        filtrados?.map(h => [
             h.id_citas,
             formatearFecha(h.fecha),
+            h.placa_moto,
+            h.cliente,
             h.servicio,
+            formatearPrecio(h.precio),
             crearEstado(h.estado),
             h.repuestos_utilizados
-        ])
+        ]) ?? null,
+        Boolean(busqueda.trim())
     );
 };
 
@@ -747,39 +695,72 @@ const cargarInformacion = async () => {
     if (!token || cargando) return false;
 
     const version = versionSesion;
+    const boton = elemento('actualizarPanel');
+    const estadoCarga = elemento('estadoCarga');
+
     cargando = true;
+    boton.disabled = true;
+    estadoCarga.textContent = 'Cargando datos…';
 
     try {
-        const resultados = await Promise.all([
+        const [dashboard, asignaciones, catalogo, registros, perfil] = await Promise.allSettled([
             consultarAPI('/api/tecnico/dashboard'),
             consultarAPI('/api/tecnico/asignaciones'),
             consultarAPI('/api/tecnico/servicios'),
-            consultarAPI('/api/tecnico/historial')
+            consultarAPI('/api/tecnico/historial'),
+            consultarAPI('/api/tecnico/perfil')
         ]);
 
         if (version !== versionSesion) return false;
 
-        trabajos = resultados[1];
-        servicios = resultados[2];
-        historial = resultados[3];
+        if (asignaciones.status === 'fulfilled') trabajos = asignaciones.value;
+        if (catalogo.status === 'fulfilled') servicios = catalogo.value;
+        if (registros.status === 'fulfilled') historial = registros.value;
 
-        renderizarDashboard(resultados[0]);
+        renderizarDashboard(dashboard.value);
         renderizarAsignaciones();
         renderizarServicios();
         renderizarReparaciones();
         renderizarHistorial();
 
-        return true;
+        const perfilNoDisponible = perfil.reason?.status === 404;
 
-    } catch (error) {
+        if (perfil.status === 'fulfilled') {
+            renderizarPerfil(perfil.value);
+        } else if (perfilNoDisponible) {
+            renderizarPerfil({ nombre_completo: dashboard.value?.tecnico });
+        }
+
+        const fallos = [
+            [dashboard, 'resumen'],
+            [asignaciones, 'asignaciones y reparaciones'],
+            [catalogo, 'servicios'],
+            [registros, 'historial'],
+            ...(perfilNoDisponible ? [] : [[perfil, 'perfil']])
+        ].filter(([resultado]) => resultado.status === 'rejected')
+            .map(([, nombre]) => nombre);
+
+        if (fallos.length) {
+            notificar(
+                `No se pudieron actualizar: ${fallos.join(', ')}. Usa Actualizar datos para reintentar.`,
+                'warning'
+            );
+        }
+
+        return fallos.length === 0;
+    } catch {
         if (version === versionSesion) {
-            notificar(error.message, 'danger');
+            notificar(
+                'No se pudo mostrar la información. Usa Actualizar datos para reintentar.',
+                'danger'
+            );
         }
         return false;
-
     } finally {
         if (version === versionSesion) {
             cargando = false;
+            boton.disabled = false;
+            estadoCarga.textContent = '';
         }
     }
 };
@@ -791,10 +772,8 @@ const activarSesion = async datos => {
 
     versionSesion++;
     token = datos.token;
-
     ultimaInteraccion = Date.now();
     ultimoContactoAPI = Date.now();
-
     limiteSesion = 0;
     limiteInactividad = 0;
 
@@ -804,41 +783,30 @@ const activarSesion = async datos => {
     elemento('menu').hidden = false;
     elemento('panelTecnico').hidden = false;
     elemento('salir').hidden = false;
-
     elemento('login').reset();
 
-    mostrarVista(
-        window.location.hash.slice(1) || 'dashboard'
-    );
-
+    mostrarVista(window.location.hash.slice(1) || 'dashboard');
     await cargarInformacion();
 };
 
 const restaurarSesion = async () => {
     const boton = elemento('login').querySelector('button');
     const version = versionSesion;
-
     boton.disabled = true;
 
     try {
-        const respuesta = await fetch('/api/auth/renovar', {
-            method: 'POST',
-            credentials: 'same-origin',
-            cache: 'no-store'
-        });
-
-        const datos = await respuesta.json()
-            .catch(() => ({}));
+        const respuesta = await solicitarCambioSesion('/api/auth/renovar');
+        const datos = await respuesta.json().catch(() => ({}));
 
         if (version !== versionSesion) return;
 
         if (respuesta.ok && datos.token) {
             await activarSesion(datos);
+        } else if (respuesta.status >= 500) {
+            elemento('mensaje').textContent = 'No se pudo comprobar la sesión anterior.';
         }
-
-    } catch (error) {
-        elemento('mensaje').textContent =
-            'No se pudo comprobar la sesión anterior.';
+    } catch {
+        elemento('mensaje').textContent = 'No se pudo comprobar la sesión anterior.';
     } finally {
         boton.disabled = false;
     }
@@ -848,93 +816,83 @@ elemento('login').addEventListener('submit', async evento => {
     evento.preventDefault();
 
     const boton = evento.currentTarget.querySelector('button');
-
     boton.disabled = true;
     elemento('mensaje').textContent = '';
 
     try {
-        const datos = await consultarAPI(
-            '/api/auth/login',
-            'POST',
-            {
-                id_usuario: Number(elemento('usuario').value),
-                password: elemento('password').value
-            }
-        );
+        const datos = await consultarAPI('/api/auth/login', 'POST', {
+            id_usuario: Number(elemento('usuario').value),
+            password: elemento('password').value
+        });
 
         await activarSesion(datos);
-
     } catch (error) {
-        if (!token) {
-            elemento('mensaje').textContent = error.message;
-        } else {
+        if (token) {
             notificar(error.message, 'danger');
+        } else {
+            elemento('mensaje').textContent = error.message;
         }
     } finally {
         boton.disabled = false;
     }
 });
 
-elemento('formTrabajo').addEventListener(
-    'submit',
-    async evento => {
-        evento.preventDefault();
+elemento('formTrabajo').addEventListener('submit', async evento => {
+    evento.preventDefault();
 
-        if (!operacion || enviando || !token) return;
+    if (!operacion || enviando || !token) return;
 
-        const version = versionSesion;
-        const trabajoActual = { ...operacion };
+    const version = versionSesion;
+    const trabajoActual = { ...operacion };
+    const errorTrabajo = elemento('errorTrabajo');
 
-        enviando = true;
+    enviando = true;
+    elemento('confirmarTrabajo').disabled = true;
+    elemento('cancelar').disabled = true;
+    errorTrabajo.textContent = '';
+    errorTrabajo.hidden = true;
 
-        elemento('confirmarTrabajo').disabled = true;
-        elemento('cancelar').disabled = true;
-        elemento('errorTrabajo').textContent = '';
+    const datos = trabajoActual.accion.endsWith('finalizar')
+        ? { repuestos_utilizados: elemento('repuestos').value.trim() || null }
+        : {};
 
-        const datos = trabajoActual.accion.endsWith('finalizar')
-            ? {
-                repuestos_utilizados:
-                    elemento('repuestos').value.trim() || null
-            }
-            : {};
+    try {
+        const resultado = await consultarAPI(
+            `/api/tecnico/reparaciones/${trabajoActual.id}/${trabajoActual.accion}`,
+            'PATCH',
+            datos
+        );
 
-        try {
-            const resultado = await consultarAPI(
-                `/api/tecnico/reparaciones/${trabajoActual.id}/${trabajoActual.accion}`,
-                'PATCH',
-                datos
+        if (version !== versionSesion) return;
+
+        elemento('modalTrabajo').close();
+        operacion = null;
+        const actualizado = await cargarInformacion();
+
+        if (version === versionSesion) {
+            notificar(
+                actualizado
+                    ? resultado.mensaje
+                    : 'Operación realizada. Usa Actualizar datos para consultar el estado.',
+                actualizado ? 'success' : 'warning'
             );
+        }
+    } catch (error) {
+        if (version === versionSesion) {
+            errorTrabajo.textContent = error.name === 'TimeoutError' || error instanceof TypeError
+                ? 'No se pudo confirmar el resultado. Cierra esta ventana y actualiza los datos antes de reintentar.'
+                : error.message;
 
-            if (version !== versionSesion) return;
-
-            elemento('modalTrabajo').close();
-            operacion = null;
-
-            const actualizado = await cargarInformacion();
-
-            if (version === versionSesion) {
-                notificar(
-                    actualizado
-                        ? resultado.mensaje
-                        : 'Operación realizada. Vuelve a ingresar para consultar el estado.',
-                    actualizado ? 'success' : 'warning'
-                );
-            }
-
-        } catch (error) {
-            if (version === versionSesion) {
-                elemento('errorTrabajo').textContent =
-                    error.message;
-            }
-        } finally {
-            if (version === versionSesion) {
-                enviando = false;
-                elemento('confirmarTrabajo').disabled = false;
-                elemento('cancelar').disabled = false;
-            }
+            errorTrabajo.hidden = false;
+        }
+    } finally {
+        if (version === versionSesion) {
+            enviando = false;
+            elemento('confirmarTrabajo').disabled = false;
+            elemento('cancelar').disabled = false;
         }
     }
-);
+});
 
 elemento('cancelar').addEventListener('click', () => {
     if (!enviando) {
@@ -962,10 +920,8 @@ elemento('salir').addEventListener('click', async () => {
             await renovacionPendiente.catch(() => {});
         }
 
-        const respuesta = await fetch('/api/auth/logout', {
-            method: 'POST',
-            credentials: 'same-origin',
-            cache: 'no-store'
+        const respuesta = await solicitarCambioSesion('/api/auth/logout', {
+            headers: { Authorization: `Bearer ${token}` }
         });
 
         if (!respuesta.ok) {
@@ -973,13 +929,9 @@ elemento('salir').addEventListener('click', async () => {
         }
 
         cerrarSesionLocal();
-
-    } catch (error) {
+    } catch {
         if (token) {
-            notificar(
-                'No se pudo cerrar la sesión en el servidor. Inténtalo nuevamente.',
-                'danger'
-            );
+            notificar('No se pudo cerrar la sesión en el servidor. Inténtalo nuevamente.', 'danger');
         }
     } finally {
         cerrando = false;
@@ -987,30 +939,16 @@ elemento('salir').addEventListener('click', async () => {
     }
 });
 
-elemento('buscarMoto').addEventListener(
-    'input',
-    renderizarAsignaciones
-);
+elemento('actualizarPanel').addEventListener('click', async () => {
+    notificar('');
+    await cargarInformacion();
+});
 
-elemento('filtroEstado').addEventListener(
-    'change',
-    renderizarAsignaciones
-);
-
-elemento('buscarServicio').addEventListener(
-    'input',
-    renderizarServicios
-);
-
-elemento('buscarReparacion').addEventListener(
-    'input',
-    renderizarReparaciones
-);
-
-elemento('buscarHistorial').addEventListener(
-    'input',
-    renderizarHistorial
-);
+elemento('buscarMoto').addEventListener('input', renderizarAsignaciones);
+elemento('filtroEstado').addEventListener('change', renderizarAsignaciones);
+elemento('buscarServicio').addEventListener('input', renderizarServicios);
+elemento('buscarReparacion').addEventListener('input', renderizarReparaciones);
+elemento('buscarHistorial').addEventListener('input', renderizarHistorial);
 
 window.addEventListener('hashchange', () => {
     mostrarVista(window.location.hash.slice(1));
@@ -1020,13 +958,10 @@ document.addEventListener('pointerdown', registrarInteraccion);
 document.addEventListener('keydown', registrarInteraccion);
 
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-        comprobarVigencia();
-    }
+    if (document.visibilityState === 'visible') comprobarVigencia();
 });
 
 window.addEventListener('focus', comprobarVigencia);
-
 setInterval(comprobarVigencia, 1000);
 
 cerrarSesionLocal();
