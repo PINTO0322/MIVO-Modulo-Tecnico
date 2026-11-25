@@ -1,4 +1,3 @@
-
 const { pool } = require('../config/mysqlDb');
 const config = require('../config/sesionConfig');
 
@@ -107,7 +106,6 @@ const validarSesion = async (
         await conexion.commit();
 
         return sesion;
-
     } catch (error) {
         await conexion.rollback();
         throw error;
@@ -116,7 +114,7 @@ const validarSesion = async (
     }
 };
 
-const renovarSesion = async (hashActual, hashNuevo) => {
+const renovarSesion = async (hashActual, hashNuevo, idSesionEsperada) => {
     const conexion = await pool.getConnection();
 
     try {
@@ -126,8 +124,9 @@ const renovarSesion = async (hashActual, hashNuevo) => {
             `SELECT id_sesion
              FROM sesiones_tecnico
              WHERE hash_renovacion = ?
+               AND (? IS NULL OR id_sesion = ?)
              FOR UPDATE`,
-            [hashActual]
+            [hashActual, idSesionEsperada, idSesionEsperada]
         );
 
         if (!filas.length) {
@@ -136,7 +135,6 @@ const renovarSesion = async (hashActual, hashNuevo) => {
         }
 
         const idSesion = filas[0].id_sesion;
-
         const sesion = await consultarSesion(conexion, idSesion);
 
         if (!sesion) {
@@ -154,7 +152,6 @@ const renovarSesion = async (hashActual, hashNuevo) => {
         await conexion.commit();
 
         return sesion;
-
     } catch (error) {
         await conexion.rollback();
         throw error;
@@ -176,13 +173,14 @@ const revocarSesion = async (idSesion, idUsuario) => {
     return resultado.affectedRows === 1;
 };
 
-const revocarSesionPorHash = async (hashRenovacion) => {
+const revocarSesionPorHash = async (hashRenovacion, idSesion) => {
     const [resultado] = await pool.execute(
         `UPDATE sesiones_tecnico
          SET fecha_revocacion = UTC_TIMESTAMP()
          WHERE hash_renovacion = ?
+           AND (? IS NULL OR id_sesion = ?)
            AND fecha_revocacion IS NULL`,
-        [hashRenovacion]
+        [hashRenovacion, idSesion, idSesion]
     );
 
     return resultado.affectedRows === 1;
@@ -195,4 +193,3 @@ module.exports = {
     revocarSesion,
     revocarSesionPorHash
 };
-
