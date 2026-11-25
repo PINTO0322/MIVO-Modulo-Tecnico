@@ -1,4 +1,3 @@
-
 const jwt = require('jsonwebtoken');
 const { randomBytes, createHash } = require('node:crypto');
 
@@ -30,6 +29,40 @@ const limpiarCookie = res => {
     res.clearCookie('mivo_refresh', opcionesCookie);
 };
 
+const obtenerSesionSolicitada = req => {
+    const autorizacion = req.get('Authorization');
+
+    if (!autorizacion) return null;
+    if (!autorizacion.startsWith('Bearer ')) return false;
+
+    try {
+        // El token vencido sigue identificando la sesión para renovar o cerrar.
+        const datos = jwt.verify(
+            autorizacion.slice(7).trim(),
+            process.env.JWT_SECRET,
+            {
+                algorithms: ['HS256'],
+                ignoreExpiration: true
+            }
+        );
+
+        if (
+            datos.id_rol !== 2 ||
+            !Number.isSafeInteger(datos.id_usuario) ||
+            typeof datos.sid !== 'string'
+        ) {
+            return false;
+        }
+
+        return {
+            idSesion: datos.sid,
+            idUsuario: datos.id_usuario
+        };
+    } catch {
+        return false;
+    }
+};
+
 const renovar = async (req, res) => {
     res.set('Cache-Control', 'no-store');
 
@@ -41,10 +74,13 @@ const renovar = async (req, res) => {
         }
 
         const tokenActual = obtenerCookie(req, 'mivo_refresh');
+        const sesionSolicitada = obtenerSesionSolicitada(req);
 
-        if (!tokenActual || !/^[a-f0-9]{64}$/.test(tokenActual)) {
-            limpiarCookie(res);
-
+        if (
+            sesionSolicitada === false ||
+            !tokenActual ||
+            !/^[a-f0-9]{64}$/.test(tokenActual)
+        ) {
             return res.status(401).json({
                 error: 'Sesión no válida'
             });
@@ -62,12 +98,11 @@ const renovar = async (req, res) => {
 
         const sesion = await Sesion.renovarSesion(
             hashActual,
-            hashNuevo
+            hashNuevo,
+            sesionSolicitada?.idSesion ?? null
         );
 
         if (!sesion) {
-            limpiarCookie(res);
-
             return res.status(401).json({
                 error: 'Sesión expirada o revocada'
             });
@@ -105,28 +140,24 @@ const renovar = async (req, res) => {
 
         res.cookie('mivo_refresh', tokenNuevo, {
             ...opcionesCookie,
-            maxAge: Math.max(
-                0,
-                sesion.segundos_restantes * 1000
-            )
+            maxAge: Math.max(0, sesion.segundos_restantes * 1000)
         });
 
         return res.status(200).json({
-    mensaje: 'Sesión renovada correctamente',
-    token,
-    sesion: {
-        segundos_restantes: Math.max(
-            0,
-            Number(sesion.segundos_restantes)
-        ),
-        segundos_inactividad_restantes: Math.max(
-            0,
-            Number(sesion.segundos_inactividad_restantes)
-        ),
-        aviso_segundos: config.AVISO_SEGUNDOS
-    }
-});
-
+            mensaje: 'Sesión renovada correctamente',
+            token,
+            sesion: {
+                segundos_restantes: Math.max(
+                    0,
+                    Number(sesion.segundos_restantes)
+                ),
+                segundos_inactividad_restantes: Math.max(
+                    0,
+                    Number(sesion.segundos_inactividad_restantes)
+                ),
+                aviso_segundos: config.AVISO_SEGUNDOS
+            }
+        });
     } catch (error) {
         console.error('Error al renovar sesión:', error.message);
 
@@ -141,21 +172,41 @@ const cerrar = async (req, res) => {
 
     try {
         const tokenActual = obtenerCookie(req, 'mivo_refresh');
+        const sesionSolicitada = obtenerSesionSolicitada(req);
+
+        if (sesionSolicitada === false) {
+            return res.status(401).json({
+                error: 'Sesión no válida'
+            });
+        }
+
+        let revocada = false;
 
         if (tokenActual && /^[a-f0-9]{64}$/.test(tokenActual)) {
             const hashRenovacion = createHash('sha256')
                 .update(tokenActual)
                 .digest('hex');
 
-            await Sesion.revocarSesionPorHash(hashRenovacion);
+            revocada = await Sesion.revocarSesionPorHash(
+                hashRenovacion,
+                sesionSolicitada?.idSesion ?? null
+            );
         }
 
-        limpiarCookie(res);
+        if (sesionSolicitada && !revocada) {
+            await Sesion.revocarSesion(
+                sesionSolicitada.idSesion,
+                sesionSolicitada.idUsuario
+            );
+        }
+
+        if (!sesionSolicitada || revocada) {
+            limpiarCookie(res);
+        }
 
         return res.status(200).json({
             mensaje: 'Sesión cerrada correctamente'
         });
-
     } catch (error) {
         console.error('Error al cerrar sesión:', error.message);
 
